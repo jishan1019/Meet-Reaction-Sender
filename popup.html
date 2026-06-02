@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meet Reactor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Syne:wght@400;600;800&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0d0d0f;
+      --surface: #17171a;
+      --surface2: #1f1f24;
+      --border: #2a2a30;
+      --accent: #7c5cfc;
+      --accent2: #ff6b6b;
+      --green: #4ade80;
+      --text: #f0f0f5;
+      --muted: #6b6b78;
+      --radius: 12px;
+    }
+
+    body {
+      width: 360px;
+      min-height: 520px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Syne', sans-serif;
+      padding: 0;
+      overflow-x: hidden;
+    }
+
+    /* Header */
+    .header {
+      background: linear-gradient(135deg, #1a0a3d 0%, #0d0d1a 100%);
+      padding: 18px 20px 16px;
+      border-bottom: 1px solid var(--border);
+      position: relative;
+      overflow: hidden;
+    }
+    .header::before {
+      content: '';
+      position: absolute;
+      top: -30px; right: -30px;
+      width: 120px; height: 120px;
+      background: radial-gradient(circle, rgba(124,92,252,0.3) 0%, transparent 70%);
+      pointer-events: none;
+    }
+    .header-top { display: flex; align-items: center; gap: 10px; }
+    .logo { font-size: 22px; }
+    .app-name { font-size: 18px; font-weight: 800; letter-spacing: -0.3px; }
+    .app-name span { color: var(--accent); }
+    .status-badge {
+      margin-left: auto;
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      padding: 3px 8px;
+      border-radius: 20px;
+      background: var(--surface2);
+      color: var(--muted);
+      border: 1px solid var(--border);
+      transition: all 0.3s;
+    }
+    .status-badge.active {
+      background: rgba(74,222,128,0.15);
+      color: var(--green);
+      border-color: rgba(74,222,128,0.3);
+    }
+    .subtitle { margin-top: 4px; font-size: 11px; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+    /* Body */
+    .body { padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; }
+
+    /* Section label */
+    .section-label {
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 1.5px;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    /* Interval input */
+    .interval-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+    }
+    .interval-icon { font-size: 18px; }
+    .interval-text { flex: 1; font-size: 13px; color: var(--muted); }
+    .interval-text strong { color: var(--text); display: block; font-size: 14px; }
+    .interval-input {
+      width: 64px;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      color: var(--text);
+      font-family: 'Space Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      padding: 6px 8px;
+      text-align: center;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .interval-input:focus { border-color: var(--accent); }
+    .interval-unit { font-size: 11px; color: var(--muted); font-family: 'Space Mono', monospace; }
+
+    /* Emoji grid */
+    .emoji-section { }
+    .emoji-grid {
+      display: grid;
+      grid-template-columns: repeat(5, 1fr);
+      gap: 6px;
+    }
+    .emoji-card {
+      background: var(--surface);
+      border: 2px solid var(--border);
+      border-radius: 10px;
+      padding: 8px 4px 6px;
+      cursor: pointer;
+      text-align: center;
+      transition: all 0.15s ease;
+      position: relative;
+      user-select: none;
+    }
+    .emoji-card:hover { border-color: var(--accent); background: var(--surface2); }
+    .emoji-card.selected {
+      border-color: var(--accent);
+      background: rgba(124,92,252,0.15);
+    }
+    .emoji-card .em { font-size: 20px; display: block; }
+    .emoji-card .em-count {
+      font-family: 'Space Mono', monospace;
+      font-size: 10px;
+      color: var(--muted);
+      margin-top: 2px;
+      display: block;
+    }
+    .emoji-card.selected .em-count { color: var(--accent); }
+    .count-badge {
+      position: absolute;
+      top: -5px; right: -5px;
+      background: var(--accent);
+      color: white;
+      font-size: 9px;
+      font-weight: 700;
+      font-family: 'Space Mono', monospace;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      display: flex; align-items: center; justify-content: center;
+      opacity: 0;
+      transform: scale(0);
+      transition: all 0.15s;
+    }
+    .emoji-card.selected .count-badge { opacity: 1; transform: scale(1); }
+
+    /* Count per emoji */
+    .count-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+    }
+    .count-label { font-size: 12px; color: var(--muted); }
+    .count-label strong { color: var(--text); display: block; }
+    .stepper {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .stepper-btn {
+      width: 28px; height: 28px;
+      border-radius: 50%;
+      border: 1px solid var(--border);
+      background: var(--surface2);
+      color: var(--text);
+      font-size: 16px;
+      cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: all 0.15s;
+    }
+    .stepper-btn:hover { background: var(--accent); border-color: var(--accent); }
+    .stepper-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 16px;
+      font-weight: 700;
+      min-width: 24px;
+      text-align: center;
+    }
+
+    /* Stats */
+    .stats-row {
+      display: flex;
+      gap: 8px;
+    }
+    .stat-card {
+      flex: 1;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .stat-val {
+      font-family: 'Space Mono', monospace;
+      font-size: 20px;
+      font-weight: 700;
+      color: var(--accent);
+    }
+    .stat-label { font-size: 10px; color: var(--muted); margin-top: 2px; letter-spacing: 0.5px; }
+
+    /* Summary preview */
+    .preview {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 14px;
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--muted);
+      min-height: 36px;
+      line-height: 1.6;
+    }
+    .preview .em-preview { color: var(--text); font-size: 13px; }
+
+    /* Buttons */
+    .btn-start {
+      width: 100%;
+      padding: 13px;
+      border: none;
+      border-radius: var(--radius);
+      background: linear-gradient(135deg, var(--accent), #a855f7);
+      color: white;
+      font-family: 'Syne', sans-serif;
+      font-size: 14px;
+      font-weight: 800;
+      letter-spacing: 0.5px;
+      cursor: pointer;
+      transition: all 0.2s;
+      position: relative;
+      overflow: hidden;
+    }
+    .btn-start:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,92,252,0.4); }
+    .btn-start:active { transform: translateY(0); }
+    .btn-start.running {
+      background: linear-gradient(135deg, var(--accent2), #ff8e53);
+    }
+    .btn-start.running:hover { box-shadow: 0 6px 20px rgba(255,107,107,0.4); }
+
+    /* Warning */
+    .warning {
+      font-size: 10px;
+      color: var(--muted);
+      text-align: center;
+      font-family: 'Space Mono', monospace;
+      line-height: 1.5;
+    }
+    .warning a { color: var(--accent); text-decoration: none; }
+
+    /* Not on meet */
+    .not-meet {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      padding: 40px 20px;
+      text-align: center;
+    }
+    .not-meet .big-em { font-size: 48px; }
+    .not-meet h3 { font-size: 16px; font-weight: 800; }
+    .not-meet p { font-size: 12px; color: var(--muted); font-family: 'Space Mono', monospace; line-height: 1.6; }
+
+    /* Timer display */
+    .timer-display {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--green);
+      text-align: center;
+      padding: 4px;
+      display: none;
+    }
+    .timer-display.visible { display: block; }
+
+    /* Pulse animation */
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.5; }
+    }
+    .pulsing { animation: pulse 1.5s ease-in-out infinite; }
+  </style>
+</head>
+<body>
+
+<div class="header">
+  <div class="header-top">
+    <div class="logo">⚡</div>
+    <div class="app-name">Meet <span>Reactor</span></div>
+    <div class="status-badge" id="statusBadge">IDLE</div>
+  </div>
+  <div class="subtitle">auto-reaction scheduler for google meet</div>
+</div>
+
+<div id="mainContent">
+  <div class="body">
+
+    <!-- Interval -->
+    <div>
+      <div class="section-label">Fire every</div>
+      <div class="interval-row">
+        <div class="interval-icon">⏱️</div>
+        <div class="interval-text">
+          <strong>Interval</strong>
+          time between each reaction
+        </div>
+        <input type="number" class="interval-input" id="intervalInput" value="1" min="0.1" max="60" step="0.1" />
+        <span class="interval-unit">min</span>
+      </div>
+    </div>
+
+    <!-- Emoji Picker -->
+    <div class="emoji-section">
+      <div class="section-label">Choose reactions</div>
+      <div class="emoji-grid" id="emojiGrid"></div>
+    </div>
+
+    <!-- Count per interval -->
+    <div class="count-row">
+      <div class="count-label">
+        <strong>Clicks per interval</strong>
+        how many times to react each round
+      </div>
+      <div class="stepper">
+        <button class="stepper-btn" id="countDown">−</button>
+        <div class="stepper-val" id="countVal">1</div>
+        <button class="stepper-btn" id="countUp">+</button>
+      </div>
+    </div>
+
+    <!-- Preview -->
+    <div>
+      <div class="section-label">Preview</div>
+      <div class="preview" id="previewText">Select reactions above to preview schedule…</div>
+    </div>
+
+    <!-- Stats -->
+    <div class="stats-row" id="statsRow" style="display:none">
+      <div class="stat-card">
+        <div class="stat-val" id="statClicks">0</div>
+        <div class="stat-label">REACTIONS SENT</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-val" id="statNext">—</div>
+        <div class="stat-label">NEXT IN (MIN)</div>
+      </div>
+    </div>
+
+    <!-- Start/Stop -->
+    <button class="btn-start" id="mainBtn">🚀 Start Reactor</button>
+
+    <div class="warning">
+      Only works on <a href="https://meet.google.com" target="_blank">meet.google.com</a> tabs.<br>
+      Keep this tab open while reactor is running.
+    </div>
+  </div>
+</div>
+
+<div id="notMeet" style="display:none">
+  <div class="not-meet">
+    <div class="big-em">📹</div>
+    <h3>Open Google Meet First</h3>
+    <p>Navigate to a Google Meet call,<br>then click this extension again.</p>
+  </div>
+</div>
+
+<script src="popup.js"></script>
+</body>
+</html>
