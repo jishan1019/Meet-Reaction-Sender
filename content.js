@@ -99,17 +99,21 @@ function findReactionButton(emoji) {
   return null;
 }
 
-// ─── Open panel (with retry) then click emoji ────────────────────────────────
+// ─── Ensure panel is open (fast: one 300ms wait max) ────────────────────────
+async function ensurePanelOpen() {
+  if (isReactionPanelOpen()) return true;
+  openReactionPanel();
+  await sleep(300);
+  if (isReactionPanelOpen()) return true;
+  // One extra attempt
+  openReactionPanel();
+  await sleep(300);
+  return isReactionPanelOpen();
+}
+
+// ─── Click a single emoji reaction ───────────────────────────────────────────
 async function clickReaction(emoji) {
-  // Open panel if needed; retry up to 3 times
-  if (!isReactionPanelOpen()) {
-    openReactionPanel();
-    for (let attempt = 0; attempt < 3; attempt++) {
-      await sleep(600);
-      if (isReactionPanelOpen()) break;
-      openReactionPanel(); // try again
-    }
-  }
+  await ensurePanelOpen();
 
   const btn = findReactionButton(emoji);
   if (!btn) {
@@ -121,30 +125,33 @@ async function clickReaction(emoji) {
   btn.dispatchEvent(new MouseEvent('mousedown',  { bubbles: true, cancelable: true }));
   btn.dispatchEvent(new MouseEvent('mouseup',    { bubbles: true, cancelable: true }));
   btn.dispatchEvent(new MouseEvent('click',      { bubbles: true, cancelable: true }));
-  btn.click(); // belt-and-suspenders
+  btn.click();
 
   sessionStats.totalClicks++;
   notifyPopup({ type: 'CLICK_SUCCESS', emoji, total: sessionStats.totalClicks });
   return true;
 }
 
-// ─── Send one full burst of all selected emojis (random order) ──────────────
-//   Flatten queue into individual emoji entries, shuffle them, then click
-//   with 2 s between each so Meet registers every reaction.
+// ─── Send one full burst (true random-pick-with-replacement) ────────────────
+//  Each click independently picks a random emoji from the weighted pool.
+//  This means no clumps — you never predict what's next.
+//  Speed: 400 ms between clicks (~5 reactions per 2 seconds).
 async function sendBurst(reactionQueue) {
-  // Build flat list: each emoji repeated by its count
-  const flat = [];
+  // Build weighted pool: emoji appears N times = N times more likely
+  const pool = [];
   for (const { emoji, count } of reactionQueue) {
-    for (let i = 0; i < count; i++) flat.push(emoji);
+    for (let i = 0; i < count; i++) pool.push(emoji);
   }
+  if (pool.length === 0) return;
 
-  // Randomise order every burst
-  const randomised = shuffle(flat);
+  const totalClicks = pool.length;
 
-  for (const emoji of randomised) {
-    if (!isActive) return; // stopped mid-burst
+  for (let i = 0; i < totalClicks; i++) {
+    if (!isActive) return;
+    // Pick a FRESH random emoji each time — true randomness, no sequence
+    const emoji = pool[Math.floor(Math.random() * pool.length)];
     await clickReaction(emoji);
-    await sleep(2000); // 2 s between each reaction click
+    await sleep(400); // 400 ms → ~5 reactions per 2 s
   }
 }
 
