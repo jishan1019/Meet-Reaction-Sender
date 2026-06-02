@@ -128,16 +128,23 @@ async function clickReaction(emoji) {
   return true;
 }
 
-// ─── Send one full burst of all selected emojis ──────────────────────────────
-//   burst = for each emoji in reactionQueue, click it `count` times
-//   with 2 s between each click so Meet registers every reaction
+// ─── Send one full burst of all selected emojis (random order) ──────────────
+//   Flatten queue into individual emoji entries, shuffle them, then click
+//   with 2 s between each so Meet registers every reaction.
 async function sendBurst(reactionQueue) {
+  // Build flat list: each emoji repeated by its count
+  const flat = [];
   for (const { emoji, count } of reactionQueue) {
-    for (let i = 0; i < count; i++) {
-      if (!isActive) return; // stopped mid-burst
-      await clickReaction(emoji);
-      await sleep(2000); // 2 s between each reaction click
-    }
+    for (let i = 0; i < count; i++) flat.push(emoji);
+  }
+
+  // Randomise order every burst
+  const randomised = shuffle(flat);
+
+  for (const emoji of randomised) {
+    if (!isActive) return; // stopped mid-burst
+    await clickReaction(emoji);
+    await sleep(2000); // 2 s between each reaction click
   }
 }
 
@@ -182,6 +189,16 @@ function stopReactions() {
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
+}
+
+// Fisher-Yates shuffle — returns a new shuffled array
+function shuffle(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
 }
 
 function notifyPopup(data) {
