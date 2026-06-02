@@ -182,12 +182,12 @@ function startStatPoller(tabId, intervalMinutes) {
       if (res && res.running) {
         statClicks.textContent = res.stats?.totalClicks || 0;
 
-        const remaining = nextFireTime - Date.now();
-        if (remaining < 0) {
-          nextFireTime = Date.now() + intervalMinutes * 60 * 1000;
+        if (nextFireTime) {
+          const mins = Math.max(0, (nextFireTime - Date.now()) / 60000);
+          statNext.textContent = mins < 1 ? '<1' : mins.toFixed(1);
+        } else {
+          statNext.textContent = '…';
         }
-        const mins = Math.max(0, (nextFireTime - Date.now()) / 60000);
-        statNext.textContent = mins < 1 ? '<1' : mins.toFixed(1);
       } else {
         setRunningUI(false);
         clearInterval(statInterval);
@@ -235,8 +235,10 @@ async function loadSettings() {
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'CLICK_SUCCESS') {
     statClicks.textContent = message.total;
-    // Reset next fire timer
-    nextFireTime = Date.now() + (parseFloat(intervalInput.value) || 1) * 60 * 1000;
+  }
+  if (message.type === 'NEXT_BURST') {
+    // Content script tells us when the next burst will fire
+    nextFireTime = message.at;
   }
   if (message.type === 'STOPPED') {
     setRunningUI(false);
