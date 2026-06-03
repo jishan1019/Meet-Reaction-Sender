@@ -14,14 +14,14 @@ const EMOJIS = [
 ];
 
 let selectedEmojis = new Set();
-let countPerInterval = 1;
+let timesPerEmoji = 5;
 let isRunning = false;
 let statInterval = null;
-let nextFireTime = null;
 
 // DOM refs
 const emojiGrid = document.getElementById('emojiGrid');
-const intervalInput = document.getElementById('intervalInput');
+const durationInput = document.getElementById('durationInput');
+const unitSelect = document.getElementById('unitSelect');
 const countValEl = document.getElementById('countVal');
 const previewText = document.getElementById('previewText');
 const mainBtn = document.getElementById('mainBtn');
@@ -59,10 +59,22 @@ function toggleEmoji(emoji, card) {
   saveSettings();
 }
 
+function clearAllEmojis() {
+  selectedEmojis.clear();
+  emojiGrid.querySelectorAll('.emoji-card').forEach(card => card.classList.remove('selected'));
+  updatePreview();
+  saveSettings();
+}
+
+function getDurationSeconds() {
+  const val = parseFloat(durationInput.value) || 1;
+  return unitSelect.value === 'min' ? val * 60 : val;
+}
+
 function updatePreview() {
   const selected = [...selectedEmojis];
-  const interval = parseFloat(intervalInput.value) || 1;
-  const count = countPerInterval;
+  const durationSec = getDurationSeconds();
+  const total = selected.length * timesPerEmoji;
 
   if (selected.length === 0) {
     previewText.innerHTML = 'Select reactions above to preview schedule…';
@@ -70,27 +82,32 @@ function updatePreview() {
   }
 
   const emojiStr = selected.join(' ');
-  const times = count > 1 ? `${count}× each` : 'once each';
-  const intervalStr = interval < 1 ? `${Math.round(interval * 60)}s` : `${interval}min`;
+  const durationLabel = unitSelect.value === 'min'
+    ? `${durationInput.value || 1}min`
+    : `${durationInput.value || 1}s`;
 
   previewText.innerHTML = `
     <span class="em-preview">${emojiStr}</span><br>
-    Sends <strong>${times}</strong> every <strong>${intervalStr}</strong><br>
-    Selected: ${selected.length} reaction${selected.length > 1 ? 's' : ''} in rotation
+    Each emoji fires <strong>${timesPerEmoji}×</strong> per burst → <strong>${total} reactions</strong> per burst<br>
+    Bursts repeat for <strong>${durationLabel}</strong> total, then stops
   `;
 }
 
-// Stepper
+// Stepper (max 50)
 document.getElementById('countDown').addEventListener('click', () => {
-  if (countPerInterval > 1) { countPerInterval--; countValEl.textContent = countPerInterval; }
+  if (timesPerEmoji > 1) { timesPerEmoji--; countValEl.textContent = timesPerEmoji; }
   updatePreview(); saveSettings();
 });
 document.getElementById('countUp').addEventListener('click', () => {
-  if (countPerInterval < 10) { countPerInterval++; countValEl.textContent = countPerInterval; }
+  if (timesPerEmoji < 50) { timesPerEmoji++; countValEl.textContent = timesPerEmoji; }
   updatePreview(); saveSettings();
 });
 
-intervalInput.addEventListener('input', () => { updatePreview(); saveSettings(); });
+// Clear All
+document.getElementById('clearAllBtn').addEventListener('click', clearAllEmojis);
+
+durationInput.addEventListener('input', () => { updatePreview(); saveSettings(); });
+unitSelect.addEventListener('change', () => { updatePreview(); saveSettings(); });
 
 // Start / Stop
 mainBtn.addEventListener('click', async () => {
@@ -121,20 +138,18 @@ async function startReactor() {
   }
 
   const config = {
-    reactions: [...selectedEmojis].map(emoji => ({ emoji, count: countPerInterval })),
-    intervalMinutes: parseFloat(intervalInput.value) || 1,
+    reactions: [...selectedEmojis].map(emoji => ({ emoji, count: timesPerEmoji })),
+    durationSeconds: getDurationSeconds(),
   };
 
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'START', config });
     isRunning = true;
-    nextFireTime = Date.now() + config.intervalMinutes * 60 * 1000;
 
-    // Save running state
-    chrome.storage.local.set({ isRunning: true, config, nextFireTime });
+    chrome.storage.local.set({ isRunning: true, config });
 
     setRunningUI(true);
-    startStatPoller(tab.id, config.intervalMinutes);
+    startStatPoller(tab.id);
   } catch (e) {
     previewText.innerHTML = `⚠️ Could not connect to Meet tab. Reload the Meet page and try again.`;
   }
@@ -173,7 +188,7 @@ function setRunningUI(running) {
   }
 }
 
-function startStatPoller(tabId, intervalMinutes) {
+function startStatPoller(tabId) {
   if (statInterval) clearInterval(statInterval);
 
   statInterval = setInterval(async () => {
@@ -181,36 +196,33 @@ function startStatPoller(tabId, intervalMinutes) {
       const res = await chrome.tabs.sendMessage(tabId, { action: 'PING' });
       if (res && res.running) {
         statClicks.textContent = res.stats?.totalClicks || 0;
-
-        if (nextFireTime) {
-          const mins = Math.max(0, (nextFireTime - Date.now()) / 60000);
-          statNext.textContent = mins < 1 ? '<1' : mins.toFixed(1);
-        } else {
-          statNext.textContent = '…';
+        if (res.endTime) {
+          const secsLeft = Math.max(0, (res.endTime - Date.now()) / 1000);
+          statNext.textContent = secsLeft < 1 ? '<1' : Math.ceil(secsLeft);
         }
       } else {
         setRunningUI(false);
         clearInterval(statInterval);
       }
     } catch (e) {
-      // Tab closed or navigated away
       setRunningUI(false);
       clearInterval(statInterval);
     }
-  }, 2000);
+  }, 1000);
 }
 
 function saveSettings() {
   chrome.storage.local.set({
     selectedEmojis: [...selectedEmojis],
-    countPerInterval,
-    intervalMinutes: parseFloat(intervalInput.value) || 1,
+    timesPerEmoji,
+    durationValue: parseFloat(durationInput.value) || 1,
+    durationUnit: unitSelect.value,
   });
 }
 
 async function loadSettings() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['selectedEmojis', 'countPerInterval', 'intervalMinutes', 'isRunning', 'config', 'nextFireTime'], data => {
+    chrome.storage.local.get(['selectedEmojis', 'timesPerEmoji', 'durationValue', 'durationUnit', 'isRunning', 'config'], data => {
       if (data.selectedEmojis) {
         data.selectedEmojis.forEach(e => {
           selectedEmojis.add(e);
@@ -218,14 +230,12 @@ async function loadSettings() {
           if (card) card.classList.add('selected');
         });
       }
-      if (data.countPerInterval) {
-        countPerInterval = data.countPerInterval;
-        countValEl.textContent = countPerInterval;
+      if (data.timesPerEmoji) {
+        timesPerEmoji = data.timesPerEmoji;
+        countValEl.textContent = timesPerEmoji;
       }
-      if (data.intervalMinutes) {
-        intervalInput.value = data.intervalMinutes;
-      }
-      if (data.nextFireTime) nextFireTime = data.nextFireTime;
+      if (data.durationValue) durationInput.value = data.durationValue;
+      if (data.durationUnit) unitSelect.value = data.durationUnit;
       resolve(data);
     });
   });
@@ -236,12 +246,9 @@ chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'CLICK_SUCCESS') {
     statClicks.textContent = message.total;
   }
-  if (message.type === 'NEXT_BURST') {
-    // Content script tells us when the next burst will fire
-    nextFireTime = message.at;
-  }
   if (message.type === 'STOPPED') {
     setRunningUI(false);
+    if (statInterval) { clearInterval(statInterval); statInterval = null; }
   }
 });
 
@@ -251,7 +258,6 @@ async function init() {
   const data = await loadSettings();
   updatePreview();
 
-  // Check if reactor was already running
   if (data.isRunning) {
     const tab = await getCurrentTab();
     if (tab && tab.url && tab.url.includes('meet.google.com')) {
@@ -260,7 +266,7 @@ async function init() {
         if (res && res.running) {
           isRunning = true;
           setRunningUI(true);
-          startStatPoller(tab.id, parseFloat(intervalInput.value) || 1);
+          startStatPoller(tab.id);
         }
       } catch(e) {
         chrome.storage.local.set({ isRunning: false });

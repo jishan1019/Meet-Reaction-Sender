@@ -1,9 +1,9 @@
 // Meet Reactor - Content Script
 // Listens for messages from popup and auto-clicks reactions
 
-let burstTimeout = null;      // holds the setTimeout id for burst scheduling
 let sessionStats = { totalClicks: 0, startTime: null };
 let isActive = false;
+let sessionEndTime = null;
 
 // ─── Heart alias: Meet shows 💖 for ❤️ ───────────────────────────────────────
 const EMOJI_ALIASES = {
@@ -22,21 +22,17 @@ function isReactionPanelOpen() {
   );
   if (!toolbar) return false;
   const rect = toolbar.getBoundingClientRect();
-  // Must be painted on screen with real dimensions
   return rect.width > 0 && rect.height > 0;
 }
 
 // ─── Click the bottom-bar button that OPENS the reaction tray ────────────────
 function openReactionPanel() {
-  if (isReactionPanelOpen()) return true; // already visible
+  if (isReactionPanelOpen()) return true;
 
-  // Selectors for the toggle button in Meet's bottom controls bar.
-  // We must NOT match buttons that are INSIDE the reaction tray itself.
   const selectors = [
     'button[jsname="A5Il2c"]',
     'button[jsname="Kd8gCe"]',
     'button[jsname="R3Eqid"]',
-    // aria-label variants used by Meet for the toggle button
     'button[aria-label="Send a reaction"]',
     'button[aria-label*="reaction" i]',
     'button[aria-label*="emoji" i]',
@@ -47,7 +43,6 @@ function openReactionPanel() {
   for (const sel of selectors) {
     const all = document.querySelectorAll(sel);
     for (const btn of all) {
-      // Skip any button that lives inside the tray itself
       if (btn.closest('[role="toolbar"][aria-label*="reaction" i]')) continue;
       if (btn.closest('.kHVWGc')) continue;
 
@@ -58,7 +53,6 @@ function openReactionPanel() {
     }
   }
 
-  // Last resort: any button in the page whose aria-label mentions "react"
   for (const btn of document.querySelectorAll('button')) {
     if (btn.closest('[role="toolbar"][aria-label*="reaction" i]')) continue;
     if (btn.closest('.kHVWGc')) continue;
@@ -76,19 +70,16 @@ function openReactionPanel() {
 function findReactionButton(emoji) {
   const aliases = getAliases(emoji);
 
-  // 1. data-emoji attribute on <button>
   for (const a of aliases) {
     const btn = document.querySelector(`button[data-emoji="${a}"]`);
     if (btn) return btn;
   }
 
-  // 2. aria-label exactly equal to the emoji char
   for (const a of aliases) {
     const btn = document.querySelector(`button[aria-label="${a}"]`);
     if (btn) return btn;
   }
 
-  // 3. Walk all buttons
   for (const btn of document.querySelectorAll('button')) {
     const lbl = btn.getAttribute('aria-label') || '';
     for (const a of aliases) {
@@ -99,13 +90,12 @@ function findReactionButton(emoji) {
   return null;
 }
 
-// ─── Ensure panel is open (fast: one 300ms wait max) ────────────────────────
+// ─── Ensure panel is open ────────────────────────────────────────────────────
 async function ensurePanelOpen() {
   if (isReactionPanelOpen()) return true;
   openReactionPanel();
   await sleep(300);
   if (isReactionPanelOpen()) return true;
-  // One extra attempt
   openReactionPanel();
   await sleep(300);
   return isReactionPanelOpen();
@@ -132,38 +122,35 @@ async function clickReaction(emoji) {
   return true;
 }
 
-// ─── Send one full burst (true random-pick-with-replacement) ────────────────
-//  Each click independently picks a random emoji from the weighted pool.
-//  This means no clumps — you never predict what's next.
-//  Speed: 400 ms between clicks (~5 reactions per 2 seconds).
-async function sendBurst(reactionQueue) {
-  // Build weighted pool: emoji appears N times = N times more likely
+// ─── Send one burst: each emoji × count times, in random order ──────────────
+async function sendBurst(reactions) {
+  // Build pool: emoji appears `count` times
   const pool = [];
-  for (const { emoji, count } of reactionQueue) {
+  for (const { emoji, count } of reactions) {
     for (let i = 0; i < count; i++) pool.push(emoji);
   }
   if (pool.length === 0) return;
 
-  const totalClicks = pool.length;
+  // Shuffle pool (Fisher-Yates)
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [pool[i], pool[j]] = [pool[j], pool[i]];
+  }
 
-  for (let i = 0; i < totalClicks; i++) {
+  for (const emoji of pool) {
     if (!isActive) return;
-    // Pick a FRESH random emoji each time — true randomness, no sequence
-    const emoji = pool[Math.floor(Math.random() * pool.length)];
     await clickReaction(emoji);
-    await sleep(400); // 400 ms → ~5 reactions per 2 s
+    await sleep(400);
   }
 }
 
-// ─── Schedule repeated bursts ────────────────────────────────────────────────
-function scheduleBurst(reactionQueue, intervalMs) {
-  if (!isActive) return;
-
-  sendBurst(reactionQueue).then(() => {
-    if (!isActive) return;
-    burstTimeout = setTimeout(() => scheduleBurst(reactionQueue, intervalMs), intervalMs);
-    notifyPopup({ type: 'NEXT_BURST', at: Date.now() + intervalMs });
-  });
+// ─── Run bursts repeatedly until the session duration expires ────────────────
+async function runSession(reactions) {
+  while (isActive && Date.now() < sessionEndTime) {
+    await sendBurst(reactions);
+  }
+  // Time's up — auto-stop
+  if (isActive) stopReactions();
 }
 
 // ─── Start ───────────────────────────────────────────────────────────────────
@@ -174,11 +161,9 @@ function startReactions(config) {
 
   isActive = true;
   sessionStats = { totalClicks: 0, startTime: Date.now() };
+  sessionEndTime = Date.now() + (config.durationSeconds || 60) * 1000;
 
-  const intervalMs = (config.intervalMinutes || 1) * 60 * 1000;
-
-  // Send first burst immediately, then repeat every intervalMs
-  scheduleBurst(config.reactions, intervalMs);
+  runSession(config.reactions);
 
   notifyPopup({ type: 'STARTED', startTime: sessionStats.startTime });
 }
@@ -186,26 +171,13 @@ function startReactions(config) {
 // ─── Stop ────────────────────────────────────────────────────────────────────
 function stopReactions() {
   isActive = false;
-  if (burstTimeout) {
-    clearTimeout(burstTimeout);
-    burstTimeout = null;
-  }
+  sessionEndTime = null;
   notifyPopup({ type: 'STOPPED', total: sessionStats.totalClicks });
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
-}
-
-// Fisher-Yates shuffle — returns a new shuffled array
-function shuffle(arr) {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
 }
 
 function notifyPopup(data) {
@@ -221,7 +193,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     stopReactions();
     sendResponse({ ok: true, total: sessionStats.totalClicks });
   } else if (message.action === 'PING') {
-    sendResponse({ ok: true, running: isActive, stats: sessionStats });
+    sendResponse({ ok: true, running: isActive, stats: sessionStats, endTime: sessionEndTime });
   }
   return true;
 });
