@@ -102,9 +102,13 @@ async function ensurePanelOpen() {
   return isReactionPanelOpen();
 }
 
-// ─── Click a single emoji reaction ───────────────────────────────────────────
+// ─── Click one emoji (panel assumed already open) ────────────────────────────
 async function clickReaction(emoji) {
-  await ensurePanelOpen();
+  // If panel somehow closed mid-burst, do one quick reopen (no double-sleep)
+  if (!isReactionPanelOpen()) {
+    openReactionPanel();
+    await sleep(250);
+  }
 
   const btn = findReactionButton(emoji);
   if (!btn) {
@@ -113,27 +117,17 @@ async function clickReaction(emoji) {
   }
 
   btn.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
-  btn.dispatchEvent(
-    new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
-  );
-  btn.dispatchEvent(
-    new MouseEvent("mouseup", { bubbles: true, cancelable: true }),
-  );
-  btn.dispatchEvent(
-    new MouseEvent("click", { bubbles: true, cancelable: true }),
-  );
+  btn.dispatchEvent(new MouseEvent("mousedown", { bubbles: true, cancelable: true }));
+  btn.dispatchEvent(new MouseEvent("mouseup",   { bubbles: true, cancelable: true }));
+  btn.dispatchEvent(new MouseEvent("click",     { bubbles: true, cancelable: true }));
   btn.click();
 
   sessionStats.totalClicks++;
-  notifyPopup({
-    type: "CLICK_SUCCESS",
-    emoji,
-    total: sessionStats.totalClicks,
-  });
+  notifyPopup({ type: "CLICK_SUCCESS", emoji, total: sessionStats.totalClicks });
   return true;
 }
 
-// ─── Send one burst: each emoji × count times, randomly shuffled ─────────────
+// ─── Send one burst: open panel once, then fire all clicks ───────────────────
 async function sendBurst(reactions, delayMs) {
   const pool = [];
   for (const { emoji, count } of reactions) {
@@ -146,6 +140,10 @@ async function sendBurst(reactions, delayMs) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
+
+  // Open panel once before the loop — avoids 600ms wait on every single click
+  const opened = await ensurePanelOpen();
+  if (!opened) return;
 
   for (const emoji of pool) {
     if (!isActive) return;
