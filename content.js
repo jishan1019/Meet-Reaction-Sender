@@ -1,14 +1,11 @@
-// Meet Reactor - Content Script
-// Listens for messages from popup and auto-clicks reactions
-
 let sessionStats = { totalClicks: 0, startTime: null };
 let isActive = false;
 let sessionEndTime = null;
 
 // ─── Heart alias: Meet shows 💖 for ❤️ ───────────────────────────────────────
 const EMOJI_ALIASES = {
-  '❤️': ['❤️', '💖', '❤'],
-  '💖': ['💖', '❤️', '❤'],
+  "❤️": ["❤️", "💖", "❤"],
+  "💖": ["💖", "❤️", "❤"],
 };
 
 function getAliases(emoji) {
@@ -18,7 +15,7 @@ function getAliases(emoji) {
 // ─── Is the reaction tray currently VISIBLE? ─────────────────────────────────
 function isReactionPanelOpen() {
   const toolbar = document.querySelector(
-    '[role="toolbar"][aria-label="Send a reaction"], .kHVWGc[role="toolbar"]'
+    '[role="toolbar"][aria-label="Send a reaction"], .kHVWGc[role="toolbar"]',
   );
   if (!toolbar) return false;
   const rect = toolbar.getBoundingClientRect();
@@ -44,20 +41,24 @@ function openReactionPanel() {
     const all = document.querySelectorAll(sel);
     for (const btn of all) {
       if (btn.closest('[role="toolbar"][aria-label*="reaction" i]')) continue;
-      if (btn.closest('.kHVWGc')) continue;
+      if (btn.closest(".kHVWGc")) continue;
 
-      btn.dispatchEvent(new MouseEvent('mousedown', { bubbles: true, cancelable: true }));
-      btn.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true, cancelable: true }));
+      btn.dispatchEvent(
+        new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+      );
+      btn.dispatchEvent(
+        new MouseEvent("mouseup", { bubbles: true, cancelable: true }),
+      );
       btn.click();
       return true;
     }
   }
 
-  for (const btn of document.querySelectorAll('button')) {
+  for (const btn of document.querySelectorAll("button")) {
     if (btn.closest('[role="toolbar"][aria-label*="reaction" i]')) continue;
-    if (btn.closest('.kHVWGc')) continue;
-    const lbl = (btn.getAttribute('aria-label') || '').toLowerCase();
-    if (lbl.includes('react') || lbl === 'emoji') {
+    if (btn.closest(".kHVWGc")) continue;
+    const lbl = (btn.getAttribute("aria-label") || "").toLowerCase();
+    if (lbl.includes("react") || lbl === "emoji") {
       btn.click();
       return true;
     }
@@ -80,8 +81,8 @@ function findReactionButton(emoji) {
     if (btn) return btn;
   }
 
-  for (const btn of document.querySelectorAll('button')) {
-    const lbl = btn.getAttribute('aria-label') || '';
+  for (const btn of document.querySelectorAll("button")) {
+    const lbl = btn.getAttribute("aria-label") || "";
     for (const a of aliases) {
       if (lbl === a || lbl.trim() === a.trim()) return btn;
     }
@@ -107,31 +108,40 @@ async function clickReaction(emoji) {
 
   const btn = findReactionButton(emoji);
   if (!btn) {
-    notifyPopup({ type: 'CLICK_FAILED', emoji });
+    notifyPopup({ type: "CLICK_FAILED", emoji });
     return false;
   }
 
-  btn.dispatchEvent(new MouseEvent('mouseover',  { bubbles: true }));
-  btn.dispatchEvent(new MouseEvent('mousedown',  { bubbles: true, cancelable: true }));
-  btn.dispatchEvent(new MouseEvent('mouseup',    { bubbles: true, cancelable: true }));
-  btn.dispatchEvent(new MouseEvent('click',      { bubbles: true, cancelable: true }));
+  btn.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+  btn.dispatchEvent(
+    new MouseEvent("mousedown", { bubbles: true, cancelable: true }),
+  );
+  btn.dispatchEvent(
+    new MouseEvent("mouseup", { bubbles: true, cancelable: true }),
+  );
+  btn.dispatchEvent(
+    new MouseEvent("click", { bubbles: true, cancelable: true }),
+  );
   btn.click();
 
   sessionStats.totalClicks++;
-  notifyPopup({ type: 'CLICK_SUCCESS', emoji, total: sessionStats.totalClicks });
+  notifyPopup({
+    type: "CLICK_SUCCESS",
+    emoji,
+    total: sessionStats.totalClicks,
+  });
   return true;
 }
 
-// ─── Send one burst: each emoji × count times, in random order ──────────────
-async function sendBurst(reactions) {
-  // Build pool: emoji appears `count` times
+// ─── Send one burst: each emoji × count times, randomly shuffled ─────────────
+async function sendBurst(reactions, delayMs) {
   const pool = [];
   for (const { emoji, count } of reactions) {
     for (let i = 0; i < count; i++) pool.push(emoji);
   }
   if (pool.length === 0) return;
 
-  // Shuffle pool (Fisher-Yates)
+  // Fisher-Yates shuffle
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
@@ -140,16 +150,21 @@ async function sendBurst(reactions) {
   for (const emoji of pool) {
     if (!isActive) return;
     await clickReaction(emoji);
-    await sleep(400);
+    await sleep(delayMs);
   }
 }
 
-// ─── Run bursts repeatedly until the session duration expires ────────────────
-async function runSession(reactions) {
+// ─── Loop mode: repeat bursts until duration expires ─────────────────────────
+async function runLoopSession(reactions, delayMs) {
   while (isActive && Date.now() < sessionEndTime) {
-    await sendBurst(reactions);
+    await sendBurst(reactions, delayMs);
   }
-  // Time's up — auto-stop
+  if (isActive) stopReactions();
+}
+
+// ─── One-shot mode: single burst then stop ───────────────────────────────────
+async function runOnceSession(reactions, delayMs) {
+  await sendBurst(reactions, delayMs);
   if (isActive) stopReactions();
 }
 
@@ -161,23 +176,29 @@ function startReactions(config) {
 
   isActive = true;
   sessionStats = { totalClicks: 0, startTime: Date.now() };
-  sessionEndTime = Date.now() + (config.durationSeconds || 60) * 1000;
+  const delayMs = config.clickDelayMs || 400;
 
-  runSession(config.reactions);
+  if (config.loopEnabled) {
+    sessionEndTime = Date.now() + (config.durationSeconds || 60) * 1000;
+    runLoopSession(config.reactions, delayMs);
+  } else {
+    sessionEndTime = null;
+    runOnceSession(config.reactions, delayMs);
+  }
 
-  notifyPopup({ type: 'STARTED', startTime: sessionStats.startTime });
+  notifyPopup({ type: "STARTED", startTime: sessionStats.startTime });
 }
 
 // ─── Stop ────────────────────────────────────────────────────────────────────
 function stopReactions() {
   isActive = false;
   sessionEndTime = null;
-  notifyPopup({ type: 'STOPPED', total: sessionStats.totalClicks });
+  notifyPopup({ type: "STOPPED", total: sessionStats.totalClicks });
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function sleep(ms) {
-  return new Promise(r => setTimeout(r, ms));
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 function notifyPopup(data) {
@@ -186,14 +207,19 @@ function notifyPopup(data) {
 
 // ─── Message listener ─────────────────────────────────────────────────────────
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.action === 'START') {
+  if (message.action === "START") {
     startReactions(message.config);
     sendResponse({ ok: true });
-  } else if (message.action === 'STOP') {
+  } else if (message.action === "STOP") {
     stopReactions();
     sendResponse({ ok: true, total: sessionStats.totalClicks });
-  } else if (message.action === 'PING') {
-    sendResponse({ ok: true, running: isActive, stats: sessionStats, endTime: sessionEndTime });
+  } else if (message.action === "PING") {
+    sendResponse({
+      ok: true,
+      running: isActive,
+      stats: sessionStats,
+      endTime: sessionEndTime,
+    });
   }
   return true;
 });

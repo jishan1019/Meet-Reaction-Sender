@@ -102,8 +102,8 @@
     }
     .btn-clear-all:hover { border-color: var(--accent2); color: var(--accent2); }
 
-    /* Duration input */
-    .duration-row {
+    /* Generic row card */
+    .setting-row {
       display: flex;
       align-items: center;
       gap: 10px;
@@ -112,9 +112,11 @@
       border-radius: var(--radius);
       padding: 10px 14px;
     }
-    .duration-icon { font-size: 18px; }
-    .duration-text { flex: 1; font-size: 13px; color: var(--muted); }
-    .duration-text strong { color: var(--text); display: block; font-size: 14px; }
+    .row-icon { font-size: 18px; flex-shrink: 0; }
+    .row-text { flex: 1; font-size: 13px; color: var(--muted); }
+    .row-text strong { color: var(--text); display: block; font-size: 14px; }
+
+    /* Duration input */
     .duration-input {
       width: 60px;
       background: var(--surface2);
@@ -144,8 +146,86 @@
     }
     .unit-select:focus { border-color: var(--accent); }
 
+    /* Toggle switch */
+    .toggle-switch {
+      position: relative;
+      display: inline-block;
+      width: 44px;
+      height: 24px;
+      flex-shrink: 0;
+    }
+    .toggle-switch input { opacity: 0; width: 0; height: 0; }
+    .toggle-slider {
+      position: absolute;
+      inset: 0;
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: 24px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+    .toggle-slider::before {
+      content: '';
+      position: absolute;
+      width: 16px; height: 16px;
+      left: 3px; top: 3px;
+      background: var(--muted);
+      border-radius: 50%;
+      transition: all 0.2s;
+    }
+    .toggle-switch input:checked + .toggle-slider {
+      background: rgba(124,92,252,0.25);
+      border-color: var(--accent);
+    }
+    .toggle-switch input:checked + .toggle-slider::before {
+      transform: translateX(20px);
+      background: var(--accent);
+    }
+
+    /* Speed slider */
+    .speed-track {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .speed-slider {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 100%;
+      height: 4px;
+      border-radius: 4px;
+      background: var(--border);
+      outline: none;
+      cursor: pointer;
+    }
+    .speed-slider::-webkit-slider-thumb {
+      -webkit-appearance: none;
+      appearance: none;
+      width: 16px; height: 16px;
+      border-radius: 50%;
+      background: var(--accent);
+      cursor: pointer;
+      border: 2px solid var(--bg);
+      box-shadow: 0 0 0 1px var(--accent);
+    }
+    .speed-labels {
+      display: flex;
+      justify-content: space-between;
+      font-family: 'Space Mono', monospace;
+      font-size: 9px;
+      color: var(--muted);
+    }
+    .speed-current {
+      font-family: 'Space Mono', monospace;
+      font-size: 11px;
+      color: var(--accent);
+      font-weight: 700;
+      white-space: nowrap;
+      flex-shrink: 0;
+    }
+
     /* Emoji grid */
-    .emoji-section { }
     .emoji-grid {
       display: grid;
       grid-template-columns: repeat(5, 1fr);
@@ -205,11 +285,7 @@
     }
     .count-label { font-size: 12px; color: var(--muted); }
     .count-label strong { color: var(--text); display: block; }
-    .stepper {
-      display: flex;
-      align-items: center;
-      gap: 8px;
-    }
+    .stepper { display: flex; align-items: center; gap: 8px; }
     .stepper-btn {
       width: 28px; height: 28px;
       border-radius: 50%;
@@ -231,10 +307,7 @@
     }
 
     /* Stats */
-    .stats-row {
-      display: flex;
-      gap: 8px;
-    }
+    .stats-row { display: flex; gap: 8px; }
     .stat-card {
       flex: 1;
       background: var(--surface);
@@ -284,9 +357,7 @@
     }
     .btn-start:hover { transform: translateY(-1px); box-shadow: 0 6px 20px rgba(124,92,252,0.4); }
     .btn-start:active { transform: translateY(0); }
-    .btn-start.running {
-      background: linear-gradient(135deg, var(--accent2), #ff8e53);
-    }
+    .btn-start.running { background: linear-gradient(135deg, var(--accent2), #ff8e53); }
     .btn-start.running:hover { box-shadow: 0 6px 20px rgba(255,107,107,0.4); }
 
     /* Warning */
@@ -335,25 +406,8 @@
 <div id="mainContent">
   <div class="body">
 
-    <!-- Duration -->
-    <div>
-      <div class="section-label">Run for</div>
-      <div class="duration-row">
-        <div class="duration-icon">⏱️</div>
-        <div class="duration-text">
-          <strong>Duration</strong>
-          total time to keep reacting
-        </div>
-        <input type="number" class="duration-input" id="durationInput" value="1" min="1" max="999" step="1" />
-        <select class="unit-select" id="unitSelect">
-          <option value="sec">sec</option>
-          <option value="min" selected>min</option>
-        </select>
-      </div>
-    </div>
-
     <!-- Emoji Picker -->
-    <div class="emoji-section">
+    <div>
       <div class="section-header">
         <div class="section-label" style="margin-bottom:0">Choose reactions</div>
         <button class="btn-clear-all" id="clearAllBtn">CLEAR ALL</button>
@@ -374,6 +428,52 @@
       </div>
     </div>
 
+    <!-- Speed control -->
+    <div class="setting-row">
+      <div class="row-icon">⚡</div>
+      <div class="speed-track">
+        <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:4px;">
+          <strong style="font-size:14px; color:var(--text); font-family:'Syne',sans-serif;">Send Speed</strong>
+          <span class="speed-current" id="speedLabel">400ms / click</span>
+        </div>
+        <input type="range" class="speed-slider" id="speedSlider" min="100" max="1000" step="50" value="400" />
+        <div class="speed-labels">
+          <span>Fast (100ms)</span>
+          <span>Normal (400ms)</span>
+          <span>Slow (1s)</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Loop toggle + Duration -->
+    <div class="setting-row" style="flex-direction:column; align-items:stretch; gap:10px;">
+      <!-- Loop row -->
+      <div style="display:flex; align-items:center; gap:10px;">
+        <div class="row-icon">🔁</div>
+        <div class="row-text">
+          <strong>Loop mode</strong>
+          repeat burst until time runs out
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="loopToggle" checked />
+          <span class="toggle-slider"></span>
+        </label>
+      </div>
+      <!-- Duration row — hidden when loop is OFF -->
+      <div id="durationRow" style="display:flex; align-items:center; gap:10px; padding-top:8px; border-top:1px solid var(--border);">
+        <div class="row-icon">⏱️</div>
+        <div class="row-text">
+          <strong>Duration</strong>
+          total time to keep looping
+        </div>
+        <input type="number" class="duration-input" id="durationInput" value="1" min="1" max="999" step="1" />
+        <select class="unit-select" id="unitSelect">
+          <option value="sec">sec</option>
+          <option value="min" selected>min</option>
+        </select>
+      </div>
+    </div>
+
     <!-- Preview -->
     <div>
       <div class="section-label">Preview</div>
@@ -386,9 +486,9 @@
         <div class="stat-val" id="statClicks">0</div>
         <div class="stat-label">REACTIONS SENT</div>
       </div>
-      <div class="stat-card">
+      <div class="stat-card" id="statTimeCard">
         <div class="stat-val" id="statNext">—</div>
-        <div class="stat-label">TIME LEFT (s)</div>
+        <div class="stat-label" id="statTimeLabel">TIME LEFT (s)</div>
       </div>
     </div>
 

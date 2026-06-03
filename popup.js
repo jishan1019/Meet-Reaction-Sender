@@ -15,22 +15,30 @@ const EMOJIS = [
 
 let selectedEmojis = new Set();
 let timesPerEmoji = 5;
+let loopEnabled = true;
+let clickDelayMs = 400;
 let isRunning = false;
 let statInterval = null;
 
 // DOM refs
-const emojiGrid = document.getElementById('emojiGrid');
-const durationInput = document.getElementById('durationInput');
-const unitSelect = document.getElementById('unitSelect');
-const countValEl = document.getElementById('countVal');
-const previewText = document.getElementById('previewText');
-const mainBtn = document.getElementById('mainBtn');
-const statusBadge = document.getElementById('statusBadge');
-const statsRow = document.getElementById('statsRow');
-const statClicks = document.getElementById('statClicks');
-const statNext = document.getElementById('statNext');
+const emojiGrid       = document.getElementById('emojiGrid');
+const durationInput   = document.getElementById('durationInput');
+const unitSelect      = document.getElementById('unitSelect');
+const durationRow     = document.getElementById('durationRow');
+const loopToggle      = document.getElementById('loopToggle');
+const countValEl      = document.getElementById('countVal');
+const speedSlider     = document.getElementById('speedSlider');
+const speedLabel      = document.getElementById('speedLabel');
+const previewText     = document.getElementById('previewText');
+const mainBtn         = document.getElementById('mainBtn');
+const statusBadge     = document.getElementById('statusBadge');
+const statsRow        = document.getElementById('statsRow');
+const statClicks      = document.getElementById('statClicks');
+const statNext        = document.getElementById('statNext');
+const statTimeCard    = document.getElementById('statTimeCard');
+const statTimeLabel   = document.getElementById('statTimeLabel');
 
-// Build emoji grid
+// ── Emoji grid ──────────────────────────────────────────────────────────────
 function buildGrid() {
   emojiGrid.innerHTML = '';
   EMOJIS.forEach(({ emoji, label }) => {
@@ -61,39 +69,39 @@ function toggleEmoji(emoji, card) {
 
 function clearAllEmojis() {
   selectedEmojis.clear();
-  emojiGrid.querySelectorAll('.emoji-card').forEach(card => card.classList.remove('selected'));
+  emojiGrid.querySelectorAll('.emoji-card').forEach(c => c.classList.remove('selected'));
   updatePreview();
   saveSettings();
 }
 
-function getDurationSeconds() {
-  const val = parseFloat(durationInput.value) || 1;
-  return unitSelect.value === 'min' ? val * 60 : val;
+document.getElementById('clearAllBtn').addEventListener('click', clearAllEmojis);
+
+// ── Loop toggle ──────────────────────────────────────────────────────────────
+function applyLoopUI() {
+  durationRow.style.display = loopEnabled ? 'flex' : 'none';
+  statTimeCard.style.display = loopEnabled ? '' : 'none';
 }
 
-function updatePreview() {
-  const selected = [...selectedEmojis];
-  const durationSec = getDurationSeconds();
-  const total = selected.length * timesPerEmoji;
+loopToggle.addEventListener('change', () => {
+  loopEnabled = loopToggle.checked;
+  applyLoopUI();
+  updatePreview();
+  saveSettings();
+});
 
-  if (selected.length === 0) {
-    previewText.innerHTML = 'Select reactions above to preview schedule…';
-    return;
-  }
-
-  const emojiStr = selected.join(' ');
-  const durationLabel = unitSelect.value === 'min'
-    ? `${durationInput.value || 1}min`
-    : `${durationInput.value || 1}s`;
-
-  previewText.innerHTML = `
-    <span class="em-preview">${emojiStr}</span><br>
-    Each emoji fires <strong>${timesPerEmoji}×</strong> per burst → <strong>${total} reactions</strong> per burst<br>
-    Bursts repeat for <strong>${durationLabel}</strong> total, then stops
-  `;
+// ── Speed slider ─────────────────────────────────────────────────────────────
+function applySpeedUI() {
+  clickDelayMs = parseInt(speedSlider.value, 10);
+  speedLabel.textContent = `${clickDelayMs}ms / click`;
 }
 
-// Stepper (max 50)
+speedSlider.addEventListener('input', () => {
+  applySpeedUI();
+  updatePreview();
+  saveSettings();
+});
+
+// ── Stepper (max 50) ─────────────────────────────────────────────────────────
 document.getElementById('countDown').addEventListener('click', () => {
   if (timesPerEmoji > 1) { timesPerEmoji--; countValEl.textContent = timesPerEmoji; }
   updatePreview(); saveSettings();
@@ -103,19 +111,48 @@ document.getElementById('countUp').addEventListener('click', () => {
   updatePreview(); saveSettings();
 });
 
-// Clear All
-document.getElementById('clearAllBtn').addEventListener('click', clearAllEmojis);
-
 durationInput.addEventListener('input', () => { updatePreview(); saveSettings(); });
 unitSelect.addEventListener('change', () => { updatePreview(); saveSettings(); });
 
-// Start / Stop
-mainBtn.addEventListener('click', async () => {
-  if (isRunning) {
-    await stopReactor();
-  } else {
-    await startReactor();
+// ── Preview ───────────────────────────────────────────────────────────────────
+function getDurationSeconds() {
+  const val = parseFloat(durationInput.value) || 1;
+  return unitSelect.value === 'min' ? val * 60 : val;
+}
+
+function updatePreview() {
+  const selected = [...selectedEmojis];
+  const total = selected.length * timesPerEmoji;
+
+  if (selected.length === 0) {
+    previewText.innerHTML = 'Select reactions above to preview schedule…';
+    return;
   }
+
+  const emojiStr = selected.join(' ');
+  const speedNote = `${clickDelayMs}ms between each`;
+
+  if (loopEnabled) {
+    const durationLabel = unitSelect.value === 'min'
+      ? `${durationInput.value || 1}min`
+      : `${durationInput.value || 1}s`;
+    previewText.innerHTML = `
+      <span class="em-preview">${emojiStr}</span><br>
+      <strong>${total} reactions</strong> per burst (${timesPerEmoji}× each) · ${speedNote}<br>
+      Bursts repeat for <strong>${durationLabel}</strong>, then auto-stop
+    `;
+  } else {
+    previewText.innerHTML = `
+      <span class="em-preview">${emojiStr}</span><br>
+      Sends <strong>${total} reactions</strong> once (${timesPerEmoji}× each) · ${speedNote}<br>
+      Stops automatically after one burst
+    `;
+  }
+}
+
+// ── Start / Stop ──────────────────────────────────────────────────────────────
+mainBtn.addEventListener('click', async () => {
+  isRunning ? await stopReactor() : await startReactor();
 });
 
 async function getCurrentTab() {
@@ -139,15 +176,15 @@ async function startReactor() {
 
   const config = {
     reactions: [...selectedEmojis].map(emoji => ({ emoji, count: timesPerEmoji })),
-    durationSeconds: getDurationSeconds(),
+    loopEnabled,
+    durationSeconds: loopEnabled ? getDurationSeconds() : null,
+    clickDelayMs,
   };
 
   try {
     await chrome.tabs.sendMessage(tab.id, { action: 'START', config });
     isRunning = true;
-
     chrome.storage.local.set({ isRunning: true, config });
-
     setRunningUI(true);
     startStatPoller(tab.id);
   } catch (e) {
@@ -158,11 +195,8 @@ async function startReactor() {
 async function stopReactor() {
   const tab = await getCurrentTab();
   if (tab) {
-    try {
-      await chrome.tabs.sendMessage(tab.id, { action: 'STOP' });
-    } catch(e) {}
+    try { await chrome.tabs.sendMessage(tab.id, { action: 'STOP' }); } catch(e) {}
   }
-
   isRunning = false;
   chrome.storage.local.set({ isRunning: false });
   setRunningUI(false);
@@ -196,7 +230,7 @@ function startStatPoller(tabId) {
       const res = await chrome.tabs.sendMessage(tabId, { action: 'PING' });
       if (res && res.running) {
         statClicks.textContent = res.stats?.totalClicks || 0;
-        if (res.endTime) {
+        if (loopEnabled && res.endTime) {
           const secsLeft = Math.max(0, (res.endTime - Date.now()) / 1000);
           statNext.textContent = secsLeft < 1 ? '<1' : Math.ceil(secsLeft);
         }
@@ -211,10 +245,13 @@ function startStatPoller(tabId) {
   }, 1000);
 }
 
+// ── Persist settings ──────────────────────────────────────────────────────────
 function saveSettings() {
   chrome.storage.local.set({
     selectedEmojis: [...selectedEmojis],
     timesPerEmoji,
+    loopEnabled,
+    clickDelayMs,
     durationValue: parseFloat(durationInput.value) || 1,
     durationUnit: unitSelect.value,
   });
@@ -222,26 +259,28 @@ function saveSettings() {
 
 async function loadSettings() {
   return new Promise(resolve => {
-    chrome.storage.local.get(['selectedEmojis', 'timesPerEmoji', 'durationValue', 'durationUnit', 'isRunning', 'config'], data => {
-      if (data.selectedEmojis) {
-        data.selectedEmojis.forEach(e => {
-          selectedEmojis.add(e);
-          const card = emojiGrid.querySelector(`[data-emoji="${e}"]`);
-          if (card) card.classList.add('selected');
-        });
+    chrome.storage.local.get(
+      ['selectedEmojis', 'timesPerEmoji', 'loopEnabled', 'clickDelayMs', 'durationValue', 'durationUnit', 'isRunning', 'config'],
+      data => {
+        if (data.selectedEmojis) {
+          data.selectedEmojis.forEach(e => {
+            selectedEmojis.add(e);
+            const card = emojiGrid.querySelector(`[data-emoji="${e}"]`);
+            if (card) card.classList.add('selected');
+          });
+        }
+        if (data.timesPerEmoji)  { timesPerEmoji = data.timesPerEmoji; countValEl.textContent = timesPerEmoji; }
+        if (data.loopEnabled !== undefined) { loopEnabled = data.loopEnabled; loopToggle.checked = loopEnabled; }
+        if (data.clickDelayMs)  { clickDelayMs = data.clickDelayMs; speedSlider.value = clickDelayMs; }
+        if (data.durationValue) durationInput.value = data.durationValue;
+        if (data.durationUnit)  unitSelect.value = data.durationUnit;
+        resolve(data);
       }
-      if (data.timesPerEmoji) {
-        timesPerEmoji = data.timesPerEmoji;
-        countValEl.textContent = timesPerEmoji;
-      }
-      if (data.durationValue) durationInput.value = data.durationValue;
-      if (data.durationUnit) unitSelect.value = data.durationUnit;
-      resolve(data);
-    });
+    );
   });
 }
 
-// Listen for messages from content script
+// Listen for content script events
 chrome.runtime.onMessage.addListener((message) => {
   if (message.type === 'CLICK_SUCCESS') {
     statClicks.textContent = message.total;
@@ -252,10 +291,12 @@ chrome.runtime.onMessage.addListener((message) => {
   }
 });
 
-// Init
+// ── Init ──────────────────────────────────────────────────────────────────────
 async function init() {
   buildGrid();
   const data = await loadSettings();
+  applyLoopUI();
+  applySpeedUI();
   updatePreview();
 
   if (data.isRunning) {
